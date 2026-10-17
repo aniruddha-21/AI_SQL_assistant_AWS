@@ -1,31 +1,66 @@
-# QueryPilot — local AI SQL assistant prototype
+# AI SQL Assistant on AWS
 
-This is a zero-dependency, locally runnable demo for presenting an AWS-style AI SQL assistant before an AWS account is available.
+A Python web application for asking retail analytics questions and inspecting the SQL used to answer them. The application can run on an AWS EC2 instance and be accessed securely through an SSH tunnel.
 
-## Run it
+## Features
 
-1. Open PowerShell in this folder.
-2. Run `python app.py`.
-3. Your browser opens automatically. If it does not, use the `http://127.0.0.1:PORT` address shown in the terminal.
+- Browser-based query interface
+- Rule-based mapping of common natural-language questions to SQL
+- Direct execution of read-only `SELECT` and `WITH` queries
+- Visible SQL, result rows, and query explanation
+- SQLite database initialized with a small retail dataset on first launch
+- Python standard library only; no third-party packages required
 
-No package installation, API key, or AWS credentials are required. The app creates a small synthetic SQLite retail database on its first run.
+## AWS Deployment: EC2
 
-The app uses the first available port from 8012 through 8022.
+### 1. Create an instance
 
-## Demo flow
+Launch an Ubuntu EC2 instance. In its security group, allow SSH (TCP port 22) only from your current IP address. The web application listens on the instance's loopback interface, so do not add an inbound rule for its application port.
 
-1. Ask: **Which city generated the most revenue?**
-2. Point out the generated SQL and that it is restricted to read-only statements.
-3. Try **Top products by units sold** and **Show low stock inventory**.
-4. Use the architecture card to explain the migration path: local rule-based agent → Amazon Bedrock; Python API → AWS Lambda/API Gateway; SQLite → Athena, Aurora, or RDS; logs → CloudWatch.
+Keep the instance's public IPv4 address and the path to your SSH private key.
 
-## What this proves
+### 2. Install and start the application
 
-- Natural-language analytics workflow
-- Schema-aware SQL generation
-- Explicit SQL visibility for trust and review
-- A database execution layer with a simple read-only guardrail
+Connect to the instance from a terminal on your computer:
 
-## Next AWS increment
+```powershell
+ssh -i .\your-key.pem ubuntu@EC2_PUBLIC_IP
+```
 
-Replace `generate_sql()` in `app.py` with a Bedrock call that receives `SCHEMA_DESCRIPTION`, deploy the handler as Lambda behind API Gateway, and point the query layer at Athena or a read replica in RDS/Aurora. Keep SQL validation, least-privilege database permissions, logging, and query-cost limits as production guardrails.
+Then, in the EC2 shell:
+
+```bash
+sudo apt update
+sudo apt install -y git python3
+git clone https://github.com/aniruddha-21/AI_SQL_assistant_AWS.git
+cd AI_SQL_assistant_AWS
+python3 app.py
+```
+
+Leave this terminal running. The application prints the local address it is listening on, normally `http://127.0.0.1:8012`. It tries ports `8012` through `8022` in order.
+
+### 3. Open the application securely
+
+In a second terminal on your computer, create an SSH tunnel. Use the port printed by the application in both places below:
+
+```powershell
+ssh -i .\your-key.pem -L 8012:127.0.0.1:8012 ubuntu@EC2_PUBLIC_IP
+```
+
+Keep the tunnel open and visit [http://127.0.0.1:8012](http://127.0.0.1:8012) in your browser. The browser connects through SSH; the application port does not need to be publicly exposed. Press `Ctrl+C` in each terminal to stop the application and tunnel.
+
+## Run Locally
+
+On Windows, open PowerShell in this folder and run:
+
+```powershell
+python app.py
+```
+
+Open the address printed in the terminal. The application uses the first available port from `8012` through `8022`.
+
+## Architecture and Scope
+
+The browser sends a question to the Python HTTP server. The server maps supported question patterns to SQL, checks submitted SQL for read-only operations, and executes the query against SQLite. On EC2, SSH port forwarding provides private browser access to the application.
+
+The current implementation does not call Amazon Bedrock, Lambda, API Gateway, Athena, RDS, or CloudWatch. Natural-language interpretation is deterministic and limited to the patterns implemented in `generate_sql()` in `app.py`; it is not an LLM integration. The SQLite database and its generated dataset are stored on the machine running the application. Use an appropriate managed database, authentication, authorization, query controls, and monitoring before connecting business data or exposing the service to other users.
